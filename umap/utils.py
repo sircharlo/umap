@@ -117,3 +117,38 @@ def gzip_file(from_path, to_path):
 
 def is_ajax(request):
     return request.headers.get("x-requested-with") == "XMLHttpRequest"
+
+
+def merge_conflicts(reference, latest, entrant):
+
+    # Just in case (eg. both removed the same element, or changed only metadatas)
+    if latest == entrant:
+        return latest
+
+    # Remove common features between entrant and reference versions (unchanged ones).
+    for feature in reference[:]:
+        for other in entrant[:]:
+            if feature == other:
+                entrant.remove(feature)
+                reference.remove(feature)
+                break
+
+    # Now make sure remaining features are still in latest version
+    for feature in reference:
+        found = False
+        for other in latest:
+            if other == feature:
+                found = True
+                break
+        if not found:
+            # We cannot distinguish the case where both deleted the same
+            # element and added others, or where both modified the same
+            # element, so let's raise a conflict by caution.
+            return False
+
+    # We can merge.
+    for feature in reference:
+        latest.remove(feature)
+    for feature in entrant:
+        latest.append(feature)
+    return latest

@@ -3,6 +3,7 @@ import mimetypes
 import os
 import re
 import socket
+from io import BytesIO
 from pathlib import Path
 
 from django.conf import settings
@@ -46,7 +47,7 @@ from .forms import (
     UpdateMapPermissionsForm,
 )
 from .models import DataLayer, Licence, Map, Pictogram, TileLayer
-from .utils import get_uri_template, gzip_file, is_ajax
+from .utils import get_uri_template, gzip_file, is_ajax, merge_conflicts
 
 try:
     # python3
@@ -684,7 +685,10 @@ class GZipMixin(object):
 
     @property
     def last_modified(self):
-        stat = os.stat(self.path)
+        return self.compute_last_modified(self.path)
+
+    def compute_last_modified(self, path):
+        stat = os.stat(path)
         return http_date(stat.st_mtime)
 
 
@@ -749,7 +753,11 @@ class DataLayerUpdate(FormLessEditMixin, GZipMixin, UpdateView):
         self.object = form.save()
         # Simple response with only metadatas (client should not reload all data
         # on save)
-        response = simple_json_response(**self.object.metadata)
+        data = {**self.object.metadata}
+        if self.request.session.get("needs_reload"):
+            data["geojson"] = json.loads(self.object.geojson.read().decode())
+            self.request.session["needs_reload"] = False
+        response = simple_json_response(**data)
         response["Last-Modified"] = self.last_modified
         return response
 
@@ -762,13 +770,51 @@ class DataLayerUpdate(FormLessEditMixin, GZipMixin, UpdateView):
                 modified = False
         return modified
 
+    def merge(self):
+        """Try to merge conflicts."""
+
+        # Reference data source of the edition.
+        modified_at = self.request.META.get("HTTP_IF_UNMODIFIED_SINCE")
+
+        for name in self.object.get_versions():
+            path = os.path.join(settings.MEDIA_ROOT, self.object.get_version_path(name))
+            if modified_at == self.compute_last_modified(path):
+                with open(path) as f:
+                    reference = json.loads(f.read())
+                break
+        else:
+            # No reference version found, can't merge.
+            return False
+
+        # New data received in the request.
+        entrant = json.loads(self.request.FILES["geojson"].read())
+
+        # Latest known version of the data.
+        with open(self.path) as f:
+            latest = json.loads(f.read())
+
+        merge = merge_conflicts(
+            reference["features"], latest["features"], entrant["features"]
+        )
+        if merge is False:
+            return merge
+        latest["features"] = merge
+
+        # Update request data.
+        self.request.FILES["geojson"].file = BytesIO(json.dumps(latest).encode("utf-8"))
+
+        return True
+
     def post(self, request, *args, **kwargs):
         self.object = self.get_object()
         if self.object.map != self.kwargs["map_inst"]:
             return HttpResponseForbidden()
         if not self.is_unmodified():
-            return HttpResponse(status=412)
-        return super(DataLayerUpdate, self).post(request, *args, **kwargs)
+            if not self.merge():
+                return HttpResponse(status=412)
+            # We merged, let's ask the frontend to reload data.
+            self.request.session["needs_reload"] = True
+        return super().post(request, *args, **kwargs)
 
 
 class DataLayerDelete(DeleteView):

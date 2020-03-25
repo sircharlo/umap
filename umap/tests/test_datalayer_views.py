@@ -1,7 +1,9 @@
 import json
+import time
 
 import pytest
 from django.core.files.base import ContentFile
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from umap.models import DataLayer, Map
@@ -17,7 +19,10 @@ def post_data():
         "name": "name",
         "display_on_load": True,
         "rank": 0,
-        "geojson": '{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-3.1640625,53.014783245859235],[-3.1640625,51.86292391360244],[-0.50537109375,51.385495069223204],[1.16455078125,52.38901106223456],[-0.41748046875,53.91728101547621],[-2.109375,53.85252660044951],[-3.1640625,53.014783245859235]]]},"properties":{"_umap_options":{},"name":"Ho god, sounds like a polygouine"}},{"type":"Feature","geometry":{"type":"LineString","coordinates":[[1.8017578124999998,51.16556659836182],[-0.48339843749999994,49.710272582105695],[-3.1640625,50.0923932109388],[-5.60302734375,51.998410382390325]]},"properties":{"_umap_options":{},"name":"Light line"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[0.63720703125,51.15178610143037]},"properties":{"_umap_options":{},"name":"marker he"}}],"_umap_options":{"displayOnLoad":true,"name":"new name","id":1668,"remoteData":{},"color":"LightSeaGreen","description":"test"}}',
+        "geojson": SimpleUploadedFile(
+            "name.json",
+            b'{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[-3.1640625,53.014783245859235],[-3.1640625,51.86292391360244],[-0.50537109375,51.385495069223204],[1.16455078125,52.38901106223456],[-0.41748046875,53.91728101547621],[-2.109375,53.85252660044951],[-3.1640625,53.014783245859235]]]},"properties":{"_umap_options":{},"name":"Ho god, sounds like a polygouine"}},{"type":"Feature","geometry":{"type":"LineString","coordinates":[[1.8017578124999998,51.16556659836182],[-0.48339843749999994,49.710272582105695],[-3.1640625,50.0923932109388],[-5.60302734375,51.998410382390325]]},"properties":{"_umap_options":{},"name":"Light line"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[0.63720703125,51.15178610143037]},"properties":{"_umap_options":{},"name":"marker he"}}],"_umap_options":{"displayOnLoad":true,"name":"new name","id":1668,"remoteData":{},"color":"LightSeaGreen","description":"test"}}',
+        ),
     }
 
 
@@ -170,3 +175,57 @@ def test_update_readonly(client, datalayer, map, post_data, settings):
     client.login(username=map.owner.username, password="123123")
     response = client.post(url, post_data, follow=True)
     assert response.status_code == 403
+
+
+def test_optimistic_merge(client, datalayer, map):
+    url = reverse("datalayer_update", args=(map.pk, datalayer.pk))
+    client.login(username=map.owner.username, password="123123")
+    # Save once
+    post_data = {
+        "name": "name",
+        "display_on_load": True,
+        "rank": 0,
+        "geojson": SimpleUploadedFile(
+            "foo.json",
+            b'{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-1,2]},"properties":{"_umap_options":{},"name":"foo"}},{"type":"Feature","geometry":{"type":"LineString","coordinates": [2,3]},"properties":{"_umap_options":{},"name":"bar"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[3,4]},"properties":{"_umap_options":{},"name":"marker"}}],"_umap_options":{"displayOnLoad":true,"name":"new name","id":1668,"remoteData":{},"color":"LightSeaGreen","description":"test"}}',
+        ),
+    }
+    response = client.post(url, post_data, follow=True)
+    assert response.status_code == 200
+    # Get reference last_modified
+    response = client.get(reverse("datalayer_view", args=(datalayer.pk,)))
+    last_modified = response["Last-Modified"]
+    # Pretend someone else is adding one data
+    time.sleep(1)
+    post_data["geojson"] = SimpleUploadedFile(
+        "foo.json",
+        b'{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-1,2]},"properties":{"_umap_options":{},"name":"foo"}},{"type":"Feature","geometry":{"type":"LineString","coordinates": [2,3]},"properties":{"_umap_options":{},"name":"bar"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[3,4]},"properties":{"_umap_options":{},"name":"marker"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[3,4]},"properties":{"_umap_options":{},"name":"new from someone else"}}],"_umap_options":{"displayOnLoad":true,"name":"new name","id":1668,"remoteData":{},"color":"LightSeaGreen","description":"test"}}',
+    )
+    response = client.post(
+        url, post_data, follow=True, HTTP_IF_UNMODIFIED_SINCE=last_modified
+    )
+    assert response.status_code == 200
+    # Now save a new version adding data to the reference
+    post_data["geojson"] = SimpleUploadedFile(
+        "foo.json",
+        b'{"type":"FeatureCollection","features":[{"type":"Feature","geometry":{"type":"Point","coordinates":[-1,2]},"properties":{"_umap_options":{},"name":"foo"}},{"type":"Feature","geometry":{"type":"LineString","coordinates": [2,3]},"properties":{"_umap_options":{},"name":"bar"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[3,4]},"properties":{"_umap_options":{},"name":"marker"}},{"type":"Feature","geometry":{"type":"Point","coordinates":[3,4]},"properties":{"_umap_options":{},"name":"new from us"}}],"_umap_options":{"displayOnLoad":true,"name":"new name","id":1668,"remoteData":{},"color":"LightSeaGreen","description":"test"}}',
+    )
+    response = client.post(
+        url, post_data, follow=True, HTTP_IF_UNMODIFIED_SINCE=last_modified
+    )
+    assert response.status_code == 200
+    modified_datalayer = DataLayer.objects.get(pk=datalayer.pk)
+    assert modified_datalayer.geojson.read().decode() == (
+        '{"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {'
+        '"type": "Point", "coordinates": [-1, 2]}, "properties": {"_umap_options": {}'
+        ', "name": "foo"}}, {"type": "Feature", "geometry": {"type": "LineString", "c'
+        'oordinates": [2, 3]}, "properties": {"_umap_options": {}, "name": "bar"}}, {'
+        '"type": "Feature", "geometry": {"type": "Point", "coordinates": [3, 4]}, "pr'
+        'operties": {"_umap_options": {}, "name": "marker"}}, {"type": "Feature", "ge'
+        'ometry": {"type": "Point", "coordinates": [3, 4]}, "properties": {"_umap_opt'
+        'ions": {}, "name": "new from someone else"}}, {"type": "Feature", "geometry"'
+        ': {"type": "Point", "coordinates": [3, 4]}, "properties": {"_umap_options": '
+        '{}, "name": "new from us"}}], "_umap_options": {"displayOnLoad": true, "name'
+        '": "new name", "id": 1668, "remoteData": {}, "color": "LightSeaGreen", "desc'
+        'ription": "test"}}'
+    )
