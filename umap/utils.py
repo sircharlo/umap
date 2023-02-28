@@ -135,16 +135,14 @@ def merge_conflicts(reference, latest, entrant):
 
     # Now make sure remaining features are still in latest version
     for feature in reference:
-        found = False
         for other in latest:
             if other == feature:
-                found = True
                 break
-        if not found:
+        else:
             # We cannot distinguish the case where both deleted the same
             # element and added others, or where both modified the same
             # element, so let's raise a conflict by caution.
-            return False
+            raise ValueError
 
     # We can merge.
     for feature in reference:

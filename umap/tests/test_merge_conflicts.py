@@ -1,3 +1,5 @@
+import pytest
+
 from umap.utils import merge_conflicts
 
 
@@ -48,14 +50,18 @@ def test_removing_same_element():
 
 
 def test_removing_changed_element():
-    assert merge_conflicts(["A", "B"], ["A", "C"], ["A"]) is False
+    with pytest.raises(ValueError):
+        merge_conflicts(["A", "B"], ["A", "C"], ["A"])
 
 
 def test_changing_removed_element():
-    assert merge_conflicts(["A", "B"], ["A"], ["A", "C"]) is False
+    with pytest.raises(ValueError):
+        merge_conflicts(["A", "B"], ["A"], ["A", "C"])
 
 
 def test_changing_same_element():
-    assert merge_conflicts(["A", "B"], ["A", "D"], ["A", "C"]) is False
+    with pytest.raises(ValueError):
+        merge_conflicts(["A", "B"], ["A", "D"], ["A", "C"])
     # Order does not count
-    assert merge_conflicts(["A", "B", "C"], ["B", "D", "A"], ["A", "E", "B"]) is False
+    with pytest.raises(ValueError):
+        merge_conflicts(["A", "B", "C"], ["B", "D", "A"], ["A", "E", "B"])

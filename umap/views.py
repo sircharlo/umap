@@ -793,12 +793,12 @@ class DataLayerUpdate(FormLessEditMixin, GZipMixin, UpdateView):
         with open(self.path) as f:
             latest = json.loads(f.read())
 
-        merge = merge_conflicts(
-            reference["features"], latest["features"], entrant["features"]
-        )
-        if merge is False:
-            return merge
-        latest["features"] = merge
+        try:
+            merge_conflicts(
+                reference["features"], latest["features"], entrant["features"]
+            )
+        except ValueError:
+            return False
 
         # Update request data.
         self.request.FILES["geojson"].file = BytesIO(json.dumps(latest).encode("utf-8"))
