@@ -217,6 +217,10 @@ ul.photon-autocomplete {
 .update-map-permissions {
     background-position: -40px -40px;
 }
+.umap-toolbar .print-map,
+.print-map {
+    background-position: -160px -80px; /* TODO */
+}
 .umap-toolbar .upload-data,
 .upload-data {
     background-position: -160px 0;
