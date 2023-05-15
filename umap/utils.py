@@ -119,7 +119,7 @@ def is_ajax(request):
     return request.headers.get("x-requested-with") == "XMLHttpRequest"
 
 
-def merge_conflicts(reference, latest, entrant):
+def merge_features(reference, latest, entrant):
 
     # Just in case (eg. both removed the same element, or changed only metadatas)
     if latest == entrant:

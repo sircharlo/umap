@@ -47,7 +47,7 @@ from .forms import (
     UpdateMapPermissionsForm,
 )
 from .models import DataLayer, Licence, Map, Pictogram, TileLayer
-from .utils import get_uri_template, gzip_file, is_ajax, merge_conflicts
+from .utils import get_uri_template, gzip_file, is_ajax, merge_features
 
 try:
     # python3
@@ -794,7 +794,7 @@ class DataLayerUpdate(FormLessEditMixin, GZipMixin, UpdateView):
             latest = json.loads(f.read())
 
         try:
-            merge_conflicts(
+            merge_features(
                 reference["features"], latest["features"], entrant["features"]
             )
         except ValueError:
