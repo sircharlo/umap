@@ -112,12 +112,10 @@ L.U.MapPermissions = L.Class.extend({
         L._('Advanced actions')
       )
       const advancedButtons = L.DomUtil.create('div', 'button-bar', advancedActions)
-      const download = L.DomUtil.create('a', 'button', advancedButtons)
-      download.href = '#'
-      download.textContent = L._('Attach the map to my account')
-      L.DomEvent.on(download, 'click', L.DomEvent.stop).on(
-        download,
-        'click',
+      const download = L.DomUtil.createButton(
+        'button',
+        advancedButtons,
+        L._('Attach the map to my account'),
         this.attach,
         this
       )
@@ -180,15 +178,17 @@ L.U.MapPermissions = L.Class.extend({
   addOwnerLink: function (element, container) {
     if (this.options.owner && this.options.owner.name && this.options.owner.url) {
       const ownerContainer = L.DomUtil.add(
-          element,
-          'umap-map-owner',
-          container,
-          ` ${L._('by')} `
-        ),
-        owner = L.DomUtil.create('a')
-      owner.href = this.options.owner.url
-      owner.textContent = this.options.owner.name
-      ownerContainer.appendChild(owner)
+        element,
+        'umap-map-owner',
+        container,
+        ` ${L._('by')} `
+      )
+      L.DomUtil.createLink(
+        '',
+        ownerContainer,
+        this.options.owner.name,
+        this.options.owner.url
+      )
     }
   },
 
@@ -197,6 +197,8 @@ L.U.MapPermissions = L.Class.extend({
   },
 
   getShareStatusDisplay: function () {
-    return Object.fromEntries(this.map.options.share_statuses)[this.options.share_status]
-  }
+    return Object.fromEntries(this.map.options.share_statuses)[
+      this.options.share_status
+    ]
+  },
 })
