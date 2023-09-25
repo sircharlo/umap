@@ -1174,7 +1174,8 @@ L.U.Map.include({
     formData.append('name', this.options.name)
     formData.append('center', JSON.stringify(this.geometry()))
     formData.append('settings', JSON.stringify(geojson))
-    this.post(this.getSaveUrl(), {
+    const method = this.options.umap_id ? this.put.bind(this) : this.post.bind(this)
+    method(this.getSaveUrl(), {
       data: formData,
       context: this,
       callback: function (data) {
@@ -1264,13 +1265,13 @@ L.U.Map.include({
   },
 
   getEditUrl: function () {
-    return L.Util.template(this.options.urls.map_update, {
-      map_id: this.options.umap_id,
+    return L.Util.template(this.options.urls.map_detail, {
+      pk: this.options.umap_id,
     })
   },
 
   getCreateUrl: function () {
-    return L.Util.template(this.options.urls.map_create)
+    return L.Util.template(this.options.urls.map_list)
   },
 
   getSaveUrl: function () {
@@ -1932,6 +1933,12 @@ L.U.Map.include({
     options = options || {}
     options.listener = this
     this.xhr.post(url, options)
+  },
+
+  put: function (url, options) {
+    options = options || {}
+    options.listener = this
+    this.xhr.put(url, options)
   },
 
   get: function (url, options) {
